@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum CycleStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum ReviewStatus {
+  PENDING
+  SUBMITTED
+  SIGNED_OFF
+}
+
+model Organization {
+  id          String     @id @default(uuid())
+  name        String
+  locale      String     @default("es-ES")
+  createdAt   DateTime   @default(now())
+  users       User[]
+  employees   Employee[]
+  departments Department[]
+  teams       Team[]
+  templates   ReviewTemplate[]
+  cycles      ReviewCycle[]
+  feedback    FeedbackItem[]
+  objectives  Objective[]
+  calibrations CalibrationSession[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  email          String   @unique
+  role           UserRole
+  oidcSub        String?
+  samlSubject    String?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Employee {
+  id             String @id @default(uuid())
+  organizationId String
+  userId         String?
+  firstName      String
+  lastName       String
+  departmentId   String?
+  teamId         String?
+  managerId      String?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User? @relation(fields: [userId], references: [id])
+  department     Department? @relation(fields: [departmentId], references: [id])
+  team           Team? @relation(fields: [teamId], references: [id])
+}
+
+model Department { id String @id @default(uuid()) organizationId String name String organization Organization @relation(fields:[organizationId], references:[id]) }
+model Team { id String @id @default(uuid()) organizationId String name String departmentId String? organization Organization @relation(fields:[organizationId], references:[id]) }
+model ManagerRelation { id String @id @default(uuid()) employeeId String managerId String validFrom DateTime validTo DateTime? }
+
+model ReviewTemplate { id String @id @default(uuid()) organizationId String name String version Int organization Organization @relation(fields:[organizationId], references:[id]) sections ReviewSection[] scales RatingScale[] }
+model ReviewSection { id String @id @default(uuid()) templateId String title String weight Float template ReviewTemplate @relation(fields:[templateId], references:[id]) questions ReviewQuestion[] }
+model ReviewQuestion { id String @id @default(uuid()) sectionId String prompt String type String section ReviewSection @relation(fields:[sectionId], references:[id]) }
+model RatingScale { id String @id @default(uuid()) templateId String label String min Int max Int template ReviewTemplate @relation(fields:[templateId], references:[id]) }
+
+model ReviewCycle {
+  id                 String @id @default(uuid())
+  organizationId     String
+  templateId         String
+  name               String
+  startsAt           DateTime
+  endsAt             DateTime
+  status             CycleStatus @default(DRAFT)
+  anonymityThreshold Int @default(4)
+  organization       Organization @relation(fields:[organizationId], references:[id])
+  instances          ReviewInstance[]
+}
+
+model ReviewInstance { id String @id @default(uuid()) reviewCycleId String employeeId String status ReviewStatus @default(PENDING) reviewCycle ReviewCycle @relation(fields:[reviewCycleId], references:[id]) responses ReviewResponse[] signoffs ReviewSignoff[] }
+model ReviewResponse { id String @id @default(uuid()) instanceId String questionId String rating Int? comment String? instance ReviewInstance @relation(fields:[instanceId], references:[id]) }
+model ReviewSignoff { id String @id @default(uuid()) instanceId String signedByEmployeeId String signedAt DateTime @default(now()) instance ReviewInstance @relation(fields:[instanceId], references:[id]) }
+
+model Nomination { id String @id @default(uuid()) cycleId String nomineeEmployeeId String nominatorEmployeeId String status String }
+model RaterAssignment { id String @id @default(uuid()) cycleId String employeeId String raterEmployeeId String relationType String }
+model AnonymityRule { id String @id @default(uuid()) cycleId String minRaters Int }
+model AggregatedResult { id String @id @default(uuid()) cycleId String employeeId String aggregateScore Float commentsCount Int }
+
+model FeedbackItem { id String @id @default(uuid()) organizationId String fromEmployeeId String? toEmployeeId String content String visibility String createdAt DateTime @default(now()) organization Organization @relation(fields:[organizationId], references:[id]) tags FeedbackTag[] }
+model FeedbackTag { id String @id @default(uuid()) feedbackId String name String feedback FeedbackItem @relation(fields:[feedbackId], references:[id]) }
+
+model Objective { id String @id @default(uuid()) organizationId String employeeId String title String quarter String organization Organization @relation(fields:[organizationId], references:[id]) keyResults KeyResult[] checkIns CheckIn[] }
+model KeyResult { id String @id @default(uuid()) objectiveId String title String targetValue Float currentValue Float objective Objective @relation(fields:[objectiveId], references:[id]) kpiValues KPIValue[] }
+model KPIValue { id String @id @default(uuid()) keyResultId String recordedAt DateTime @default(now()) value Float keyResult KeyResult @relation(fields:[keyResultId], references:[id]) }
+model CheckIn { id String @id @default(uuid()) objectiveId String happenedAt DateTime @default(now()) note String objective Objective @relation(fields:[objectiveId], references:[id]) }
+
+model CalibrationSession { id String @id @default(uuid()) organizationId String cycleId String title String matrixSnapshot Json organization Organization @relation(fields:[organizationId], references:[id]) participants CalibrationParticipant[] adjustments CalibrationAdjustment[] }
+model CalibrationParticipant { id String @id @default(uuid()) sessionId String employeeId String role String session CalibrationSession @relation(fields:[sessionId], references:[id]) }
+model CalibrationAdjustment { id String @id @default(uuid()) sessionId String employeeId String fromRating Float toRating Float reason String adjustedAt DateTime @default(now()) session CalibrationSession @relation(fields:[sessionId], references:[id]) }
+
+model AuditLog { id String @id @default(uuid()) organizationId String actorId String action String entity String entityId String? before Json? after Json? createdAt DateTime @default(now()) organization Organization @relation(fields:[organizationId], references:[id]) }
+model ExportJob { id String @id @default(uuid()) organizationId String reportType String status String requestedBy String fileUrl String? createdAt DateTime @default(now()) }
+model Notification { id String @id @default(uuid()) organizationId String userId String channel String template String payload Json sentAt DateTime? }

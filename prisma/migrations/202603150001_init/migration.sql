@@ -1,0 +1,1 @@
+-- Placeholder migration: ejecutar `pnpm prisma migrate dev` para generar SQL completo desde schema.prisma
